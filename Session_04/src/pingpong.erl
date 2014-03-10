@@ -8,17 +8,19 @@
 
 ping(PongNode) ->
     register(pingProcess, self()),
-
     % Connect to other node
     net_kernel:connect_node(PongNode),
     % Start pong on other node
     PongPid = spawn_link(PongNode, ?MODULE, pong, [self()]),
-
-    % TODO
-    todo.
+    PongPid ! {ping, "ping"},
+	pong(self()).
 
 pong(PingPid) ->
     register(pongProcess, self()),
-    % TODO
-    todo.
+	receive 
+		{ping, Ping} ->
+			io:fwrite("~w~n", [Ping]),
+			PingPid ! {pong, "pong"}
+	end.
+			
 

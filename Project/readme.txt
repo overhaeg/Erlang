@@ -1,1 +1,3 @@
-just writing stuff down to test
+Vub
+Multicore Programming
+Erlang Project

@@ -1,4 +1,17 @@
+server_single_actor:initialize(),
+{A,B} = server_single_actor:register_user(),
+{C,D} = server_single_actor:register_user(),
+server_single_actor:subscribe(B,A,C),
+server:tweet(B,A,"Some Tweet"),
+server:tweet(D,C,"Some other Tweet"),
+server:get_tweets(B,A,0),
+server:get_timeline(B,A,0).
+
 server_multiple_actors:initialize(),
 {A,B} = server_multiple_actors:register_user(),
 {C,D} = server_multiple_actors:register_user(),
-server_multiple_actors:subscribe(B,A,C).
+server_multiple_actors:subscribe(B,A,C),
+server:tweet(B,A,"Some Tweet"),
+server:tweet(D,C,"Some other Tweet"),
+server:get_tweets(B,A,0),
+server:get_timeline(B,A,0).

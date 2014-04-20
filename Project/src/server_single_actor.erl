@@ -1,4 +1,4 @@
--module(server_multiple_actors).
+-module(server_single_actor).
 
 -export([initialize/0,
          register_user/0,
@@ -26,10 +26,14 @@ register_user() ->
     end.
 
 subscribe(EntryPid, UserId, UserIdToSubscribeTo) ->
-    io:format("Initial subscribe call~n"),
     EntryPid ! {self(), subscribe, UserId, UserIdToSubscribeTo},
     receive
-        {EntryPid, subscribed, UserId, UserIdToSubscribeTo} -> ok
+        {EntryPid, subscribed, UserId, UserIdToSubscribeTo} ->
+            EntryPid ! {self(), follow_user, UserIdToSubscribeTo, UserId},
+            receive
+                {EntryPid, followed_by_user, UserIdToSubscribeTo, UserId} -> 
+                    ok
+            end
     end.
 
 %%
@@ -46,7 +50,6 @@ manager_actor(Users) ->
             manager_actor(NewUsers);
        
         {Sender, get_data_actor, UserId} ->
-            io:format("get_data_actor ~n"),
             Sender ! {data_actor, get_data_actor(Users, UserId)},
             manager_actor(Users)
 
@@ -54,7 +57,6 @@ manager_actor(Users) ->
 
 
 data_actor(Data) ->
-    io:format("Data Actor creation ~n"),
     receive
 
 
@@ -72,7 +74,7 @@ data_actor(Data) ->
             Sender ! {self(), tweet_accepted, UserId, Timestamp},
             data_actor(NewData);
 
-        {Sender, tweet_to_follower, UserId, Timestamp, Tweet} ->
+        {_Sender, tweet_to_follower, UserId, Timestamp, Tweet} ->
             NewData = subscribed_tweet(Data, UserId, Timestamp, Tweet),
             data_actor(NewData);
         
@@ -81,8 +83,7 @@ data_actor(Data) ->
             data_actor(Data);
 
         {Sender, subscribe, UserId, UserIdToSubscribeTo} ->
-            io:format("subscribe ~n"),
-            NewData = subscribe_to_user(Data, UserId, UserIdToSubscribeTo),
+            NewData = subscribe_to_user(Data, UserIdToSubscribeTo),
             Sender ! {self(), subscribed, UserId, UserIdToSubscribeTo},
             data_actor(NewData)
 
@@ -91,24 +92,25 @@ data_actor(Data) ->
 
 
 entry_actor() ->
-    io:format("Entry actor~n"),
     ManagerActor = whereis(manager_actor),
     receive
         % RequestType ::= tweets | timeline
         {Sender, RequestType, UserId, PageOrTweetOrUserId} ->
             ManagerActor ! {self(), get_data_actor, UserId},
-            io:format("After Manager Actor~n"),
             receive
                 {data_actor, DataActor} ->
-                    io:format("Data Actor ID"),
                     DataActor ! {self(), RequestType, UserId, PageOrTweetOrUserId},
+
                     receive
                         {DataActor, ResponseType, UserId, Page, Result} ->
                             Sender ! {self(), ResponseType, UserId, Page, Result};
                         {DataActor, tweet_accepted, UserId, Timestamp} ->
                             Sender ! {self(), tweet_accepted, UserId, Timestamp};
                         {DataActor, subscribed, UserId, PageOrTweetOrUserId} ->
-                            Sender ! {self(), subscribed, UserId, PageOrTweetOrUserId}
+                            Sender ! {self(), subscribed, UserId, PageOrTweetOrUserId};
+                        {DataActor, followed_by_user, UserId, PageOrTweetOrUserId} ->
+                            Sender ! {self(), followed_by_user, UserId, PageOrTweetOrUserId}
+
                     end
             end
 
@@ -130,24 +132,12 @@ add_new_user(Users) ->
     NewUserActor = spawn_link(?MODULE, entry_actor, []),
     {NewUsers, NewUserId, NewUserActor}.
 
-subscribe_to_user(Data, UserId, UserIdToSubscribeTo) ->
-    io:format("Was Here~n"),
+subscribe_to_user(Data, UserIdToSubscribeTo) ->
     {data, Tweets, SubscribedTweets, Subscriptions, Followed_By} = Data,
     NewData = {data, Tweets, SubscribedTweets, sets:add_element(UserIdToSubscribeTo, Subscriptions), Followed_By},
-    ManagerActor = whereis(manager_actor),
-    ManagerActor ! {self(), get_data_actor, UserIdToSubscribeTo},
-    io:format("Manager_actor_get 2 ~n"),
-    receive
-        {data_actor, DataActor} ->
-            io:format("sub_rec_data_actor ~n"),
-            DataActor ! {self(), follow_user, UserIdToSubscribeTo, UserId},
-            receive
-                {DataActor, followed_by_user, UserIdToSubscribeTo, UserId} -> NewData
-            end
-    end.
+    NewData.
 
 follow_user(Data, UserIdFollowing) ->
-    io:format("followed ~n"),
     {data, Tweets, SubscribedTweets, Subscriptions, Followed_By} = Data,
     NewData = {data, Tweets, SubscribedTweets, Subscriptions, sets:add_element(UserIdFollowing, Followed_By)},
     NewData.
@@ -162,7 +152,6 @@ timeline(Data, _Page) ->
     SortedTweets.
 
 tweet(Data, UserId, Tweet) ->
-    io:format("tweeting ~n"),
     {data, Tweets, SubscribedTweets, Subscriptions, Followed_By} = Data,
     Timestamp = erlang:now(),
     NewData = {data, Tweets ++ [{tweet, UserId, Timestamp, Tweet}], SubscribedTweets, Subscriptions, Followed_By},
@@ -187,36 +176,3 @@ subscribed_tweet(Data, UserId, Timestamp, Tweet) ->
     {data, Tweets, SubscribedTweets, Subscriptions, Followed_By} = Data,
     NewData = {data, Tweets, SubscribedTweets ++ [{tweet, UserId, Timestamp, Tweet}], Subscriptions, Followed_By},
     NewData.
-
-            
-
-%% Tests
-
-initialization_test() ->
-    catch unregister(manager_actor),
-    ?assertMatch(ok, initialize()).
-
-register_user_test() ->
-    initialization_test(),
-
-    % We assume here that everything is sequential, and we have simple
-    % incremental ids
-    ?assertMatch({0, _Pid1}, register_user()),
-    ?assertMatch({1, _Pid2}, register_user()),
-    ?assertMatch({2, _Pid3}, register_user()),
-    ?assertMatch({3, _Pid4}, register_user()).
-
-init_for_test() ->
-    catch unregister(manager_actor),
-    initialize(),
-    {0, Pid1} = register_user(),
-    {1, Pid2} = register_user(),
-    {2, Pid3} = register_user(),
-    {3, Pid4} = register_user(),
-    [Pid1, Pid2, Pid3, Pid4].
-
-subscribe_to_test() ->
-    io:format("Test"),
-    [Pid1, Pid2, _, _] = init_for_test(),
-    ?assertMatch(ok, subscribe(Pid1, 2, 1)).
-

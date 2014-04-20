@@ -6,7 +6,7 @@
 %% This implementation is provided with unit tests. However, these tests are
 %% neither complete nor implementation independent. Thus, be careful when
 %% reusing them.
--module(server_single_actor).
+-module(server_single_actor_orig).
 
 %%
 %% Include files

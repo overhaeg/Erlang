@@ -57,9 +57,6 @@ data_actor(Data) ->
     io:format("Data Actor creation ~n"),
     receive
 
-        {Sender, get_data} ->
-            Sender ! {self(), data, Data},
-            data_actor(Data);
 
         {Sender, follow_user, UserId, UserIdFollowing} ->
             NewData = follow_user(Data, UserIdFollowing),
@@ -78,7 +75,10 @@ data_actor(Data) ->
         {Sender, tweet_to_follower, UserId, Timestamp, Tweet} ->
             NewData = subscribed_tweet(Data, UserId, Timestamp, Tweet),
             data_actor(NewData);
-
+        
+        {Sender, get_timeline, UserId, Page} ->
+            Sender ! {self(), timeline, UserId, Page, timeline(Data, Page)},
+            data_actor(Data);
 
         {Sender, subscribe, UserId, UserIdToSubscribeTo} ->
             io:format("subscribe ~n"),
@@ -155,6 +155,11 @@ follow_user(Data, UserIdFollowing) ->
 tweets(Data, _Page) ->
     {data, Tweets, _SubscribedTweets, _Subscriptions, _Followed_By} = Data,
     Tweets.
+
+timeline(Data, _Page) ->
+    {data, Tweets, SubscribedTweets, _Subscriptions, _Followed_By} = Data,
+    SortedTweets = lists:reverse(lists:keysort(3, Tweets ++ SubscribedTweets)),
+    SortedTweets.
 
 tweet(Data, UserId, Tweet) ->
     io:format("tweeting ~n"),

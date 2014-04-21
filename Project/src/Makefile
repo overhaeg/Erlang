@@ -1,7 +1,7 @@
 ERL_SRC = $(wildcard *.erl)
 BEAM	= $(ERL_SRC:.erl=.beam)
 
-all: $(BEAM) test
+all: $(BEAM)
 
 test:
 	./run.sh server_multiple_actors test
